@@ -1,0 +1,21 @@
+{
+  "name": "extranjeria-citas-huellas",
+  "version": "1.0.0",
+  "description": "Busca y reserva cita previa de Extranjería (toma de huellas / TIE) en la sede ICP del Gobierno de España",
+  "main": "src/index.js",
+  "bin": {
+    "citas-huellas": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "una-vez": "node src/index.js --una-vez",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "license": "MIT"
+}

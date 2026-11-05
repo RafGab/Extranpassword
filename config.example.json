@@ -1,0 +1,34 @@
+{
+  "provincia": "Madrid",
+  "oficina": ["Cualquier oficina"],
+  "tramite": "TOMA DE HUELLAS",
+
+  "tipoDocumento": "NIE",
+  "documento": "Y1234567X",
+  "nombre": "NOMBRE APELLIDO1 APELLIDO2",
+  "paisNacionalidad": "COLOMBIA",
+  "anioNacimiento": "1990",
+  "fechaCaducidad": "",
+
+  "telefono": "600000000",
+  "email": "tu-correo@ejemplo.com",
+
+  "modo": "reservar",
+  "fechaMinima": "",
+  "fechaMaxima": "",
+
+  "intervaloMinutos": [4, 8],
+  "pausaBloqueoMinutos": 30,
+  "horario": { "desde": "07:00", "hasta": "23:59" },
+  "maxIntentos": 0,
+
+  "navegador": { "visible": true, "lentitudMs": 150 },
+
+  "notificaciones": {
+    "sonido": true,
+    "telegram": { "token": "", "chatId": "" },
+    "ntfy": { "tema": "" }
+  },
+
+  "urlInicio": "https://icp.administracionelectronica.gob.es/icpplus/index.html"
+}
