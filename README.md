@@ -33,27 +33,58 @@ npx playwright install chromium
 cp config.example.json config.json
 ```
 
-Edita `config.json` con tus datos (no se sube a git):
+Edita `config.json` (no se sube a git). Arriba van los datos **comunes** (teléfono,
+email, modo, intervalos, avisos) y en `personas` una entrada por persona, **cada
+una con su propia provincia**:
+
+```json
+{
+  "telefono": "600000000",
+  "email": "correo@ejemplo.com",
+  "modo": "reservar",
+  "personas": [
+    { "nombre": "NOMBRE APELLIDOS", "documento": "Y7654321G", "paisNacionalidad": "PERU", "provincia": "Ávila" },
+    { "nombre": "OTRA PERSONA", "tipoDocumento": "PASAPORTE", "documento": "AB123456",
+      "paisNacionalidad": "VENEZUELA", "provincia": "Barcelona", "oficina": ["Sant Feliu"] }
+  ]
+}
+```
+
+En cada ronda el programa intenta a todas las personas pendientes, una detrás de
+otra, con una pausa corta entre ellas. Cuando consigue la cita de una, la guarda
+en `reservadas.json` y deja de buscarle; sigue con las demás hasta que todas
+tienen cita. Si necesitas buscarle otra a alguien, borra su entrada de ese archivo.
+
+Campos de cada persona (cualquiera de los comunes también se puede poner dentro
+de una persona para cambiarlo solo para ella, p. ej. otro `telefono`):
 
 | Campo | Qué poner |
 |---|---|
-| `provincia` | Como aparece en la web: `"Madrid"`, `"Barcelona"`, `"Alicante"`... |
-| `oficina` | Lista de oficinas preferidas (basta un trozo del nombre, p. ej. `["Aluche", "Moratalaz"]`). `["Cualquier oficina"]` acepta cualquiera. |
-| `tramite` | Por defecto `"TOMA DE HUELLAS"`. Se busca por texto, así que vale cualquier trozo del nombre del trámite. |
-| `tipoDocumento` | `"NIE"`, `"PASAPORTE"` o `"DNI"` |
-| `documento` | Tu NIE (`Y1234567X`) o número de pasaporte |
+| `provincia` | **Una sola** provincia, como aparece en la web: `"Madrid"`, `"Ávila"`, `"Alicante"`... |
+| `oficina` | Oficinas preferidas (basta un trozo del nombre, p. ej. `["Aluche", "Moratalaz"]`). `["Cualquier oficina"]` acepta cualquiera. |
+| `tipoDocumento` | `"NIE"` (por defecto), `"PASAPORTE"` o `"DNI"` |
+| `documento` | NIE (`Y1234567X`) o número de pasaporte. Se comprueba la letra del NIE. |
 | `nombre` | Nombre y apellidos **igual que en el documento** |
-| `paisNacionalidad` | Como sale en el desplegable: `"COLOMBIA"`, `"VENEZUELA"`, `"MARRUECOS"`... |
+| `paisNacionalidad` | Como sale en el desplegable: `"COLOMBIA"`, `"PERU"`, `"MARRUECOS"`... |
 | `anioNacimiento` | Solo si la sede lo pide (algunas provincias) |
 | `fechaCaducidad` | Solo para renovaciones si la sede lo pide (`dd/mm/aaaa`) |
-| `telefono` / `email` | Donde recibirás el SMS de confirmación y el justificante |
-| `modo` | `"reservar"` (reserva automáticamente) o `"avisar"` (solo avisa y te deja el navegador abierto para que termines tú) |
 | `fechaMinima` / `fechaMaxima` | Opcional, `dd/mm/aaaa`. Ignora huecos fuera de ese rango. |
-| `intervaloMinutos` | `[mín, máx]` entre intentos. **Mínimo 2.** Recomendado 4–8. |
-| `pausaBloqueoMinutos` | Si la sede bloquea por exceso de peticiones, espera esto antes de seguir. |
+
+Datos comunes:
+
+| Campo | Qué poner |
+|---|---|
+| `telefono` / `email` | Donde llegan el SMS de confirmación y el justificante |
+| `tramite` | Por defecto `"TOMA DE HUELLAS"` (se busca por texto) |
+| `modo` | `"reservar"` (reserva automáticamente) o `"avisar"` (solo avisa y deja el navegador abierto) |
+| `intervaloMinutos` | `[mín, máx]` entre rondas. **Mínimo 2.** Recomendado 4–8. |
+| `pausaEntrePersonasMinutos` | Pausa entre una persona y la siguiente dentro de la misma ronda |
+| `pausaBloqueoMinutos` | Si la sede bloquea por exceso de peticiones, espera esto antes de seguir |
 | `horario` | Franja en la que buscar, p. ej. `{"desde": "07:00", "hasta": "23:59"}` |
-| `maxIntentos` | `0` = sin límite |
-| `navegador.visible` | `true` para ver la ventana (recomendado). |
+| `maxIntentos` | Máximo de rondas; `0` = sin límite |
+| `navegador.visible` | `true` para ver la ventana (recomendado) |
+
+Un `config.json` antiguo, con una sola persona y sin `personas`, sigue funcionando.
 
 ## Uso
 
@@ -89,8 +120,8 @@ tienes unos minutos antes de que la cita retenida caduque.
 
 ## Uso responsable
 
-Esta herramienta es para que **cada persona consiga su propia cita** con sus
-propios datos. La cita previa de Extranjería es gratuita: no la uses para
+Esta herramienta es para conseguir citas para ti o para personas que te lo han
+pedido, con sus datos reales. Cada cita debe pedirse en la provincia donde vive esa persona. La cita previa de Extranjería es gratuita: no la uses para
 acaparar ni revender citas. Reservar a nombre de otra persona sin su permiso o
 vender citas puede ser delito. Si consigues una cita que ya no necesitas,
 anúlala en la misma web para liberarla.

@@ -57,7 +57,7 @@ function crearSede(escenario) {
              <input type="radio" id="rdbTipoDocPas" name="rdbTipoDoc" value="P">
              <input id="txtIdCitado" name="txtIdCitado"><input id="txtDesCitado" name="txtDesCitado">
              <select id="txtPaisNac" name="txtPaisNac"><option value="">Seleccionar</option>
-               <option value="239">COLOMBIA</option><option value="402">VENEZUELA</option></select>`,
+               <option value="239">COLOMBIA</option><option value="340">PERÚ</option><option value="402">VENEZUELA</option></select>`,
             'btnEnviar', 'Aceptar')));
         case '/icpplus/acValidarEntrada':
           return res.end(pagina(form('/icpplus/acCitar', '', 'btnEnviar', 'Solicitar Cita')));

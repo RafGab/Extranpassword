@@ -4,7 +4,23 @@
 const readline = require('readline');
 const { cargarConfig, validar } = require('./config');
 const { intentar, ESTADO } = require('./flujo');
+const fs = require('fs');
+const path = require('path');
 const { notificar, log } = require('./notificar');
+
+const ARCHIVO_RESERVADAS = path.resolve('reservadas.json');
+
+function cargarReservadas() {
+  try {
+    return JSON.parse(fs.readFileSync(ARCHIVO_RESERVADAS, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function guardarReservadas(r) {
+  fs.writeFileSync(ARCHIVO_RESERVADAS, JSON.stringify(r, null, 2));
+}
 
 function args() {
   const a = process.argv.slice(2);
@@ -26,6 +42,9 @@ Uso: node src/index.js [opciones]
   --config <ruta>            Archivo de configuración (por defecto config.json)
   --una-vez                  Hace un único intento y termina
   --probar-notificaciones    Envía una notificación de prueba y termina
+
+Las personas que ya tienen cita se guardan en reservadas.json y no se vuelven
+a buscar. Borra su entrada de ese archivo si necesitas buscarle otra.
   -h, --help                 Muestra esta ayuda
 `;
 
@@ -85,81 +104,114 @@ async function main() {
   const cerrar = async () => { await browser.close().catch(() => {}); process.exit(0); };
   process.on('SIGINT', cerrar);
 
-  log(`Buscando cita "${cfg.tramite}" en ${cfg.provincia} · modo ${cfg.modo}`);
+  const registro = cargarReservadas();
+  const pendientes = () => cfg.personas.filter((p) => !registro[p.documento]);
+  for (const p of cfg.personas) {
+    const hecha = registro[p.documento];
+    log(`${hecha ? '✅' : '🔎'} ${p.nombre} · ${p.documento} · ${p.provincia}${hecha ? ` (ya reservada: ${hecha.detalle})` : ''}`);
+  }
+  log(`Trámite "${cfg.tramite}" · modo ${cfg.modo} · ${pendientes().length} persona(s) pendiente(s)`);
   if (!cfg.navegador.visible) log('Navegador oculto: el código SMS tendrás que escribirlo aquí, en la terminal.');
 
-  const opcionesFlujo = {
+  const opcionesPara = (p) => ({
     alEncontrar: async ({ detalle, reservando }) => {
       await notificar(
         cfg.notificaciones,
-        '¡Hay citas de huellas!',
-        `${cfg.provincia}: ${detalle}. ${reservando ? 'Intentando reservar...' : 'Entra ya a reservar en el navegador.'}`
+        `¡Hay citas de huellas en ${p.provincia}!`,
+        `${p.nombre}: ${detalle}. ${reservando ? 'Intentando reservar...' : 'Entra ya a reservar en el navegador.'}`
       );
     },
     pedirCodigoSMS: async () => {
-      await notificar(cfg.notificaciones, 'Cita retenida: falta el SMS', `Te ha llegado un código al ${cfg.telefono}. Escríbelo en la terminal o en el navegador.`);
-      return pregunta('Código SMS (o Enter para escribirlo tú en el navegador): ', 9 * 60_000);
+      await notificar(cfg.notificaciones, `Cita retenida para ${p.nombre}: falta el SMS`, `Ha llegado un código al ${p.telefono}. Escríbelo en la terminal o en el navegador.`);
+      return pregunta(`Código SMS para ${p.nombre} (o Enter para escribirlo en el navegador): `, 9 * 60_000);
     },
+  });
+
+  const marcarHecha = (p, detalle) => {
+    registro[p.documento] = { nombre: p.nombre, provincia: p.provincia, detalle, fecha: new Date().toISOString() };
+    guardarReservadas(registro);
   };
 
-  let intento = 0;
+  let ciclo = 0;
   let erroresSeguidos = 0;
-  for (;;) {
+  while (pendientes().length) {
     if (!dentroDeHorario(cfg.horario)) {
       log(`Fuera de horario (${cfg.horario.desde}-${cfg.horario.hasta}); espero 10 min.`);
       await dormir(10 * 60_000);
       continue;
     }
-    intento++;
-    log(`Intento #${intento}`);
-    const r = await intentar(browser, cfg, opcionesFlujo);
+    ciclo++;
+    const turno = pendientes();
+    log(`Ronda #${ciclo}: ${turno.length} persona(s)`);
+    let bloqueado = false;
 
-    switch (r.estado) {
-      case ESTADO.RESERVADA:
-        await notificar(cfg.notificaciones, '✅ CITA RESERVADA', `${r.detalle}. Captura: ${r.captura}`);
-        log('Revisa tu correo: la sede envía el justificante. ¡Imprímelo y llévalo a la cita!');
-        return cerrar();
+    for (const [i, p] of turno.entries()) {
+      log(`→ ${p.nombre} en ${p.provincia}`);
+      const r = await intentar(browser, p, opcionesPara(p));
 
-      case ESTADO.CITAS_DISPONIBLES:
-        log(`${r.detalle}. Completa la reserva en la ventana del navegador.`);
-        await pregunta('Pulsa Enter cuando termines (se cerrará el navegador)... ');
-        return cerrar();
+      switch (r.estado) {
+        case ESTADO.RESERVADA:
+          marcarHecha(p, r.detalle);
+          await notificar(cfg.notificaciones, `✅ CITA RESERVADA · ${p.nombre}`, `${p.provincia}. ${r.detalle}. Captura: ${r.captura}`);
+          log(`El justificante llegará a ${p.email}. ¡Imprímelo y llévalo a la cita!`);
+          break;
 
-      case ESTADO.SIN_CITAS:
-        log(`Sin citas.${r.detalle ? ` ${r.detalle}` : ''}`);
-        erroresSeguidos = 0;
-        break;
-
-      case ESTADO.FUERA_DE_RANGO:
-        log(r.detalle);
-        erroresSeguidos = 0;
-        break;
-
-      case ESTADO.BLOQUEADO:
-        log(`⛔ ${r.detalle}. Pausa de ${cfg.pausaBloqueoMinutos} min.`);
-        await dormir(cfg.pausaBloqueoMinutos * 60_000);
-        continue;
-
-      case ESTADO.ERROR:
-      default:
-        erroresSeguidos++;
-        log(`⚠️  Error: ${r.detalle}${r.captura ? ` (captura: ${r.captura})` : ''}`);
-        if (r.page) {
-          await notificar(cfg.notificaciones, 'Cita retenida con problemas', `${r.detalle}. Intenta terminarla en el navegador.`);
-          await pregunta('Pulsa Enter para continuar buscando... ');
+        case ESTADO.CITAS_DISPONIBLES: {
+          log(`${r.detalle}. Completa la reserva de ${p.nombre} en la ventana del navegador.`);
+          const resp = await pregunta(`¿Conseguiste la cita de ${p.nombre}? (s = sí / Enter = seguir buscando): `);
           await r.context.close().catch(() => {});
+          if (/^s/i.test(resp)) marcarHecha(p, 'Reservada a mano en el navegador');
+          break;
         }
-        if (erroresSeguidos >= 5) {
-          await notificar(cfg.notificaciones, 'El buscador se detuvo', `5 errores seguidos. Último: ${r.detalle}`);
-          return cerrar();
-        }
+
+        case ESTADO.SIN_CITAS:
+          log(`   Sin citas.${r.detalle ? ` ${r.detalle}` : ''}`);
+          erroresSeguidos = 0;
+          break;
+
+        case ESTADO.FUERA_DE_RANGO:
+          log(`   ${r.detalle}`);
+          erroresSeguidos = 0;
+          break;
+
+        case ESTADO.BLOQUEADO:
+          bloqueado = true;
+          break;
+
+        case ESTADO.ERROR:
+        default:
+          erroresSeguidos++;
+          log(`   ⚠️  Error: ${r.detalle}${r.captura ? ` (captura: ${r.captura})` : ''}`);
+          if (r.page) {
+            await notificar(cfg.notificaciones, `Cita de ${p.nombre} retenida con problemas`, `${r.detalle}. Intenta terminarla en el navegador.`);
+            const resp = await pregunta(`¿Conseguiste terminarla? (s = sí / Enter = seguir buscando): `);
+            await r.context.close().catch(() => {});
+            if (/^s/i.test(resp)) marcarHecha(p, 'Terminada a mano en el navegador');
+          }
+          if (erroresSeguidos >= 5) {
+            await notificar(cfg.notificaciones, 'El buscador se detuvo', `5 errores seguidos. Último: ${r.detalle}`);
+            return cerrar();
+          }
+      }
+      if (bloqueado) break;
+      // Pausa corta entre personas para no encadenar peticiones a la sede
+      if (i < turno.length - 1) await dormir(esperaAleatoria(cfg.pausaEntrePersonasMinutos));
     }
 
-    if (opts.unaVez || (cfg.maxIntentos && intento >= cfg.maxIntentos)) return cerrar();
+    if (bloqueado) {
+      log(`⛔ La sede ha bloqueado las peticiones. Pausa de ${cfg.pausaBloqueoMinutos} min.`);
+      await dormir(cfg.pausaBloqueoMinutos * 60_000);
+      continue;
+    }
+    if (!pendientes().length) break;
+    if (opts.unaVez || (cfg.maxIntentos && ciclo >= cfg.maxIntentos)) return cerrar();
     const espera = esperaAleatoria(cfg.intervaloMinutos);
-    log(`Próximo intento en ${Math.round(espera / 60_000)} min.`);
+    log(`Próxima ronda en ${Math.round(espera / 60_000)} min.`);
     await dormir(espera);
   }
+
+  log('🎉 Todas las personas tienen cita. Fin.');
+  return cerrar();
 }
 
 main().catch((e) => {

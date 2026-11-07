@@ -1,34 +1,58 @@
 {
-  "provincia": "Madrid",
-  "oficina": ["Cualquier oficina"],
-  "tramite": "TOMA DE HUELLAS",
-
-  "tipoDocumento": "NIE",
-  "documento": "Y1234567X",
-  "nombre": "NOMBRE APELLIDO1 APELLIDO2",
-  "paisNacionalidad": "COLOMBIA",
-  "anioNacimiento": "1990",
-  "fechaCaducidad": "",
-
   "telefono": "600000000",
   "email": "tu-correo@ejemplo.com",
-
+  "tramite": "TOMA DE HUELLAS",
   "modo": "reservar",
-  "fechaMinima": "",
-  "fechaMaxima": "",
-
-  "intervaloMinutos": [4, 8],
+  "intervaloMinutos": [
+    4,
+    8
+  ],
+  "pausaEntrePersonasMinutos": [
+    0.5,
+    1.5
+  ],
   "pausaBloqueoMinutos": 30,
-  "horario": { "desde": "07:00", "hasta": "23:59" },
+  "horario": {
+    "desde": "07:00",
+    "hasta": "23:59"
+  },
   "maxIntentos": 0,
-
-  "navegador": { "visible": true, "lentitudMs": 150 },
-
+  "navegador": {
+    "visible": true,
+    "lentitudMs": 150
+  },
   "notificaciones": {
     "sonido": true,
-    "telegram": { "token": "", "chatId": "" },
-    "ntfy": { "tema": "" }
+    "telegram": {
+      "token": "",
+      "chatId": ""
+    },
+    "ntfy": {
+      "tema": ""
+    }
   },
-
-  "urlInicio": "https://icp.administracionelectronica.gob.es/icpplus/index.html"
+  "urlInicio": "https://icp.administracionelectronica.gob.es/icpplus/index.html",
+  "personas": [
+    {
+      "nombre": "NOMBRE APELLIDO1 APELLIDO2",
+      "tipoDocumento": "NIE",
+      "documento": "Y1234567X",
+      "paisNacionalidad": "COLOMBIA",
+      "provincia": "Madrid",
+      "oficina": [
+        "Cualquier oficina"
+      ]
+    },
+    {
+      "nombre": "OTRA PERSONA APELLIDOS",
+      "tipoDocumento": "PASAPORTE",
+      "documento": "AB123456",
+      "paisNacionalidad": "VENEZUELA",
+      "provincia": "Barcelona",
+      "oficina": [
+        "Cualquier oficina"
+      ],
+      "fechaMaxima": "31/01/2027"
+    }
+  ]
 }

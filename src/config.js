@@ -14,6 +14,7 @@ const POR_DEFECTO = {
   fechaMaxima: '',
   intervaloMinutos: [4, 8],
   pausaBloqueoMinutos: 30,
+  pausaEntrePersonasMinutos: [0.5, 1.5],
   horario: { desde: '00:00', hasta: '23:59' },
   maxIntentos: 0,
   navegador: { visible: true, lentitudMs: 150 },
@@ -34,29 +35,76 @@ function parseFecha(txt) {
   return undefined;
 }
 
-function validar(c) {
+const CAMPOS_PERSONA = [
+  'nombre', 'documento', 'tipoDocumento', 'paisNacionalidad', 'anioNacimiento', 'fechaCaducidad',
+  'provincia', 'oficina', 'tramite', 'telefono', 'email', 'fechaMinima', 'fechaMaxima',
+];
+
+/** Comprueba la letra de control de un NIE (X/Y/Z + 7 dígitos + letra) o DNI. */
+function documentoValido(tipo, doc) {
+  const LETRAS = 'TRWAGMYFPDXBNJZSQVHLCKE';
+  if (tipo === 'NIE') {
+    const m = /^([XYZ])(\d{7})([A-Z])$/.exec(doc);
+    if (!m) return false;
+    return LETRAS[Number('XYZ'.indexOf(m[1]) + m[2]) % 23] === m[3];
+  }
+  if (tipo === 'DNI') {
+    const m = /^(\d{8})([A-Z])$/.exec(doc);
+    return !!m && LETRAS[Number(m[1]) % 23] === m[2];
+  }
+  return doc.length >= 5;
+}
+
+function validarPersona(p) {
   const errores = [];
   for (const campo of ['provincia', 'documento', 'nombre', 'paisNacionalidad']) {
-    if (!c[campo] || String(c[campo]).trim() === '') errores.push(`Falta "${campo}"`);
+    if (!p[campo] || String(p[campo]).trim() === '') errores.push(`Falta "${campo}"`);
   }
-  if (c.modo === 'reservar') {
-    if (!c.telefono) errores.push('Falta "telefono" (necesario en modo "reservar")');
-    if (!c.email) errores.push('Falta "email" (necesario en modo "reservar")');
+  if (typeof p.provincia !== 'string') errores.push('"provincia" debe ser una sola provincia (texto), no una lista');
+  if (p.modo === 'reservar') {
+    if (!p.telefono) errores.push('Falta "telefono" (necesario en modo "reservar")');
+    if (!p.email) errores.push('Falta "email" (necesario en modo "reservar")');
   }
-  if (!MODOS.includes(c.modo)) errores.push(`"modo" debe ser uno de: ${MODOS.join(', ')}`);
-  if (!TIPOS_DOC.includes(String(c.tipoDocumento).toUpperCase())) {
+  if (!TIPOS_DOC.includes(p.tipoDocumento)) {
     errores.push(`"tipoDocumento" debe ser uno de: ${TIPOS_DOC.join(', ')}`);
+  } else if (p.documento && !documentoValido(p.tipoDocumento, p.documento)) {
+    errores.push(`El ${p.tipoDocumento} "${p.documento}" no es válido (revisa números y letra)`);
   }
+  for (const f of ['fechaMinima', 'fechaMaxima', 'fechaCaducidad']) {
+    if (p[f] && parseFecha(p[f]) === undefined) errores.push(`"${f}" no es una fecha válida (usa dd/mm/aaaa)`);
+  }
+  if (p.documento === 'Y1234567X') errores.push('Cambia "documento" por el NIE/pasaporte real');
+  return errores;
+}
+
+function validar(c) {
+  const errores = [];
+  if (!MODOS.includes(c.modo)) errores.push(`"modo" debe ser uno de: ${MODOS.join(', ')}`);
   if (!Array.isArray(c.intervaloMinutos) || c.intervaloMinutos.length !== 2) {
     errores.push('"intervaloMinutos" debe ser [minimo, maximo]');
   } else if (c.intervaloMinutos[0] < 2) {
     errores.push('"intervaloMinutos" mínimo es 2 minutos: consultas más frecuentes provocan bloqueos de la sede');
   }
-  for (const f of ['fechaMinima', 'fechaMaxima', 'fechaCaducidad']) {
-    if (c[f] && parseFecha(c[f]) === undefined) errores.push(`"${f}" no es una fecha válida (usa dd/mm/aaaa)`);
-  }
-  if (c.documento && c.documento === 'Y1234567X') errores.push('Cambia "documento" por tu NIE/pasaporte real');
+  if (!c.personas.length) errores.push('No hay ninguna persona en "personas"');
+  const vistos = new Set();
+  c.personas.forEach((p, i) => {
+    const quien = `Persona ${i + 1} (${p.nombre || 'sin nombre'})`;
+    for (const e of validarPersona(p)) errores.push(`${quien}: ${e}`);
+    if (p.documento && vistos.has(p.documento)) {
+      errores.push(`${quien}: el documento ${p.documento} está repetido; cada persona va una sola vez, con una sola provincia`);
+    }
+    vistos.add(p.documento);
+  });
   return errores;
+}
+
+function normalizarPersona(base, datosPersona) {
+  const p = { ...base, ...datosPersona };
+  if (typeof p.oficina === 'string') p.oficina = [p.oficina];
+  p.tipoDocumento = String(p.tipoDocumento || 'NIE').toUpperCase();
+  p.documento = String(p.documento || '').replace(/[\s-]/g, '').toUpperCase();
+  p.nombre = String(p.nombre || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  return p;
 }
 
 function cargarConfig(ruta) {
@@ -72,18 +120,18 @@ function cargarConfig(ruta) {
   } catch (e) {
     throw new Error(`config.json no es JSON válido: ${e.message}`);
   }
+  const { personas, ...comun } = datos;
   const c = {
     ...POR_DEFECTO,
-    ...datos,
-    horario: { ...POR_DEFECTO.horario, ...(datos.horario || {}) },
-    navegador: { ...POR_DEFECTO.navegador, ...(datos.navegador || {}) },
-    notificaciones: { ...POR_DEFECTO.notificaciones, ...(datos.notificaciones || {}) },
+    ...comun,
+    horario: { ...POR_DEFECTO.horario, ...(comun.horario || {}) },
+    navegador: { ...POR_DEFECTO.navegador, ...(comun.navegador || {}) },
+    notificaciones: { ...POR_DEFECTO.notificaciones, ...(comun.notificaciones || {}) },
   };
-  if (typeof c.oficina === 'string') c.oficina = [c.oficina];
-  c.tipoDocumento = String(c.tipoDocumento).toUpperCase();
-  c.documento = String(c.documento || '').trim().toUpperCase();
-  c.nombre = String(c.nombre || '').trim().toUpperCase();
+  // Cada persona hereda los ajustes comunes (teléfono, email, modo...) y puede sobrescribirlos.
+  const lista = Array.isArray(personas) ? personas : [Object.fromEntries(CAMPOS_PERSONA.map((k) => [k, comun[k]]).filter(([, v]) => v !== undefined))];
+  c.personas = lista.map((p) => normalizarPersona(c, p));
   return c;
 }
 
-module.exports = { cargarConfig, validar, parseFecha };
+module.exports = { cargarConfig, validar, parseFecha, documentoValido };

@@ -119,8 +119,38 @@ test('filtrarHuecos ordena y filtra', () => {
 
 test('config de ejemplo se rechaza hasta poner datos reales', () => {
   const c = cargarConfig(path.join(__dirname, '..', 'config.example.json'));
-  const e = validar(c);
-  assert.ok(e.some((x) => x.includes('documento')));
-  assert.deepStrictEqual(validar({ ...c, documento: 'Y7654321Z' }), []);
-  assert.ok(validar({ ...c, documento: 'Y7654321Z', intervaloMinutos: [0.5, 1] }).length > 0);
+  assert.strictEqual(c.personas.length, 2);
+  assert.ok(validar(c).some((x) => x.includes('Persona 1') && x.includes('documento')));
+  c.personas[0].documento = 'Y7654321G';
+  assert.deepStrictEqual(validar(c), []);
+  assert.ok(validar({ ...c, intervaloMinutos: [0.5, 1] }).length > 0);
+});
+
+test('cada persona hereda los datos comunes y tiene su propia provincia', () => {
+  const c = cargarConfig(path.join(__dirname, '..', 'config.example.json'));
+  assert.deepStrictEqual(c.personas.map((p) => p.provincia), ['Madrid', 'Barcelona']);
+  assert.ok(c.personas.every((p) => p.telefono === '600000000' && p.modo === 'reservar'));
+  assert.strictEqual(c.personas[1].fechaMaxima, '31/01/2027');
+  assert.strictEqual(c.personas[0].fechaMaxima, '');
+});
+
+test('rechaza documentos repetidos, varias provincias por persona y NIE con letra errónea', () => {
+  const c = cargarConfig(path.join(__dirname, '..', 'config.example.json'));
+  c.personas[0].documento = 'Y7654321G';
+  c.personas[1] = { ...c.personas[1], tipoDocumento: 'NIE', documento: 'Y7654321G' };
+  assert.ok(validar(c).some((x) => x.includes('repetido')));
+  c.personas[1] = { ...c.personas[0], documento: 'X0000000T', provincia: ['Madrid', 'Toledo'] };
+  assert.ok(validar(c).some((x) => x.includes('una sola provincia')));
+  c.personas[1] = { ...c.personas[0], documento: 'Y7654321M' };
+  assert.ok(validar(c).some((x) => x.includes('no es válido')));
+});
+
+test('config antigua de una sola persona sigue funcionando', () => {
+  const ruta = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cfg-')), 'config.json');
+  fs.writeFileSync(ruta, JSON.stringify({ provincia: 'Ávila', documento: 'y7654321g', nombre: 'nombre  apellidos',
+    paisNacionalidad: 'PERU', telefono: '600', email: 'a@b.c' }));
+  const c = cargarConfig(ruta);
+  assert.deepStrictEqual(validar(c), []);
+  assert.strictEqual(c.personas[0].documento, 'Y7654321G');
+  assert.strictEqual(c.personas[0].nombre, 'NOMBRE APELLIDOS');
 });
