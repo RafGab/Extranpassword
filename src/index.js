@@ -111,7 +111,6 @@ async function main() {
     log(`${hecha ? '✅' : '🔎'} ${p.nombre} · ${p.documento} · ${p.provincia}${hecha ? ` (ya reservada: ${hecha.detalle})` : ''}`);
   }
   log(`Trámite "${cfg.tramite}" · modo ${cfg.modo} · ${pendientes().length} persona(s) pendiente(s)`);
-  if (!cfg.navegador.visible) log('Navegador oculto: el código SMS tendrás que escribirlo aquí, en la terminal.');
 
   const opcionesPara = (p) => ({
     alEncontrar: async ({ detalle, reservando }) => {
@@ -120,6 +119,12 @@ async function main() {
         `¡Hay citas de huellas en ${p.provincia}!`,
         `${p.nombre}: ${detalle}. ${reservando ? 'Intentando reservar...' : 'Entra ya a reservar en el navegador.'}`
       );
+    },
+    resolverCaptcha: async ({ momento }) => {
+      const que = momento === 'confirmar'
+        ? `Cita de ${p.nombre} RETENIDA en ${p.provincia}. Resuelve el captcha y pulsa "Confirmar" en el navegador.`
+        : `La sede pide captcha en la pantalla de datos de ${p.nombre}. Resuélvelo y pulsa "Aceptar" en el navegador.`;
+      await notificar(cfg.notificaciones, '🧩 Captcha pendiente', `${que} Tienes unos minutos.`);
     },
     pedirCodigoSMS: async () => {
       await notificar(cfg.notificaciones, `Cita retenida para ${p.nombre}: falta el SMS`, `Ha llegado un código al ${p.telefono}. Escríbelo en la terminal o en el navegador.`);

@@ -35,6 +35,7 @@ function cfgBase(url, extra = {}) {
 const opciones = (codigo = '123456') => ({
   alEncontrar: async () => {},
   pedirCodigoSMS: async () => codigo,
+  resolverCaptcha: async () => { throw new Error('no debería pedirse captcha'); },
 });
 
 let browser;
@@ -59,6 +60,7 @@ test('reserva completa con código SMS y elige el hueco más temprano', async ()
     const r = await intentar(browser, cfgBase(sede.url), {
       alEncontrar: async (i) => { avisado = i; },
       pedirCodigoSMS: async () => '123456',
+      resolverCaptcha: async () => { throw new Error('no debería pedirse captcha'); },
     });
     assert.strictEqual(r.estado, ESTADO.RESERVADA, r.detalle);
     assert.match(r.detalle, /18\/11\/2026 09:15/);
@@ -67,6 +69,36 @@ test('reserva completa con código SMS y elige el hueco más temprano', async ()
     assert.strictEqual(sede.registro.datos.rdbCita, '2');
     assert.strictEqual(sede.registro.datos.emailUNO, 'prueba@ejemplo.com');
     assert.ok(fs.existsSync(r.captura));
+  } finally { await sede.cerrar(); }
+});
+
+test('confirmación con captcha: espera a que la persona lo resuelva y pulse Confirmar', async () => {
+  const sede = await crearSede('captcha');
+  let pagina;
+  let avisos = 0;
+  try {
+    const ctxOrig = browser.newContext.bind(browser);
+    const b = { newContext: async (o) => { const c = await ctxOrig(o); c.on('page', (p) => { pagina = p; }); return c; } };
+    const r = await intentar(b, cfgBase(sede.url), {
+      alEncontrar: async () => {},
+      pedirCodigoSMS: async () => { throw new Error('no hay SMS'); },
+      resolverCaptcha: async ({ momento }) => {
+        avisos++;
+        assert.strictEqual(momento, 'confirmar');
+        // Simula a la persona: primero se equivoca, luego acierta
+        setTimeout(async () => {
+          await pagina.fill('#captcha', 'MAL1');
+          await pagina.click('#btnConfirmar');
+          await pagina.goBack();
+          await pagina.fill('#captcha', 'K7P2');
+          await pagina.click('#btnConfirmar');
+        }, 500);
+      },
+    });
+    assert.strictEqual(r.estado, ESTADO.RESERVADA, r.detalle);
+    assert.strictEqual(avisos, 1);
+    assert.strictEqual(sede.registro.datos.captcha, 'K7P2');
+    assert.strictEqual(sede.registro.datos.chkTotal, 'on');
   } finally { await sede.cerrar(); }
 });
 

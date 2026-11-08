@@ -6,7 +6,7 @@ datos, revisa cada pocos minutos si hay huecos para **POLICÍA – TOMA DE HUELL
 (expedición de tarjeta / TIE)** y, cuando aparece uno, te avisa y lo reserva.
 
 Usa un navegador real (Chromium con Playwright). Tú ves lo que hace en la
-ventana, y el último paso, el código que llega por SMS, lo pones tú.
+ventana, y el último paso, **el captcha de confirmación, lo resuelves tú**.
 
 ## Cómo funciona
 
@@ -18,20 +18,30 @@ ventana, y el último paso, el código que llega por SMS, lo pones tú.
    - Si hay citas, **te avisa** (pitido, Telegram y/o notificación push al móvil).
 4. En modo `reservar`: elige tu oficina preferida, pone teléfono y email, escoge
    **el hueco más temprano** dentro de tus fechas y lo retiene.
-5. La sede manda un **SMS**: escribes el código en la terminal (o directamente en
-   el navegador) y la cita queda confirmada. Guarda una captura del justificante en `capturas/`.
+5. La cita queda **retenida** y la sede pide un **captcha**. El programa pita, te
+   avisa y espera hasta 10 minutos: escribe el captcha en la ventana del navegador y
+   pulsa **Confirmar**. En cuanto aparece el justificante, guarda una captura en
+   `capturas/` y sigue con la siguiente persona.
+   (Si alguna provincia pide en su lugar un código por SMS, te lo pedirá en la terminal.)
 
-## Instalación
+## Instalación (una sola vez)
 
-Necesitas [Node.js 18 o superior](https://nodejs.org).
+1. Instala **Node.js** (versión LTS) desde <https://nodejs.org> y reinicia el ordenador.
+2. Descarga este proyecto: en GitHub, botón verde **Code → Download ZIP**
+   (elige la rama `claude/extranjeria-citas-huellas-f0zlhb`) y descomprímelo.
+   O con git: `git clone https://github.com/RafGab/Extranpassword.git`
+3. Abre una terminal **dentro de la carpeta** del proyecto:
+   - **Windows**: abre la carpeta, escribe `cmd` en la barra de direcciones y pulsa Enter.
+   - **Mac**: clic derecho sobre la carpeta → *Nuevo terminal en la carpeta*.
+4. Instala lo necesario:
 
 ```bash
-git clone <este repositorio>
-cd Extranpassword
 npm install
 npx playwright install chromium
-cp config.example.json config.json
 ```
+
+5. Copia `config.example.json` como `config.json` (o usa el `config.json` que ya
+   tengas) y déjalo en la carpeta del proyecto.
 
 Edita `config.json` (no se sube a git). Arriba van los datos **comunes** (teléfono,
 email, modo, intervalos, avisos) y en `personas` una entrada por persona, **cada
@@ -74,7 +84,7 @@ Datos comunes:
 
 | Campo | Qué poner |
 |---|---|
-| `telefono` / `email` | Donde llegan el SMS de confirmación y el justificante |
+| `telefono` / `email` | Teléfono de contacto y correo donde llega el justificante |
 | `tramite` | Por defecto `"TOMA DE HUELLAS"` (se busca por texto) |
 | `modo` | `"reservar"` (reserva automáticamente) o `"avisar"` (solo avisa y deja el navegador abierto) |
 | `intervaloMinutos` | `[mín, máx]` entre rondas. **Mínimo 2.** Recomendado 4–8. |
@@ -82,21 +92,32 @@ Datos comunes:
 | `pausaBloqueoMinutos` | Si la sede bloquea por exceso de peticiones, espera esto antes de seguir |
 | `horario` | Franja en la que buscar, p. ej. `{"desde": "07:00", "hasta": "23:59"}` |
 | `maxIntentos` | Máximo de rondas; `0` = sin límite |
-| `navegador.visible` | `true` para ver la ventana (recomendado) |
+| `navegador.visible` | Debe ser `true`: necesitas ver la ventana para resolver el captcha |
 
 Un `config.json` antiguo, con una sola persona y sin `personas`, sigue funcionando.
 
 ## Uso
 
+Desde la terminal abierta en la carpeta del proyecto:
+
 ```bash
-npm start                         # busca en bucle hasta conseguir cita
-npm run una-vez                   # un único intento (para probar tu configuración)
-node src/index.js --probar-notificaciones
+npm run una-vez      # 1) prueba: un solo intento para revisar que todo se encuentra bien
+npm start            # 2) búsqueda continua hasta conseguir cita para todas las personas
 ```
 
-Deja la terminal abierta y el ordenador encendido (y sin suspender). Cuando
-consiga retener una cita sonará un pitido y te pedirá el **código SMS**:
-tienes unos minutos antes de que la cita retenida caduque.
+Para pararlo: **Ctrl + C**. Para comprobar los avisos al móvil:
+`node src/index.js --probar-notificaciones`.
+
+Mientras busca:
+
+- Deja la terminal y la **ventana del navegador abiertas** (puedes minimizarla) y el
+  ordenador **encendido y sin suspender**.
+- Cuando retenga una cita oirás un pitido (y te llegará el aviso al móvil si lo
+  configuraste). Ve a la ventana del navegador, **escribe el captcha y pulsa
+  Confirmar**. Tienes unos minutos antes de que la cita retenida caduque.
+- Si te equivocas con el captcha, vuelve a intentarlo en la misma ventana; el
+  programa sigue esperando.
+- El justificante llega al correo de `config.json`. Imprímelo y llévalo a la cita.
 
 ### Avisos al móvil (recomendado)
 
@@ -113,8 +134,9 @@ tienes unos minutos antes de que la cita retenida caduque.
   mediodía; un horario de 07:00 a 23:59 cubre casi todo.
 - **No bajes el intervalo de 2 minutos.** La sede bloquea temporalmente las IP que
   hacen demasiadas peticiones; el programa detecta el bloqueo y hace una pausa.
-- Si la sede pide resolver un captcha, hazlo en la ventana del navegador: el
-  programa no salta captchas ni otras protecciones de la web.
+- Los captchas los resuelves tú en la ventana del navegador: el programa no salta
+  captchas ni otras protecciones de la web. Si alguna provincia pide captcha ya en
+  la pantalla de datos personales, también te avisará para que lo resuelvas.
 - Antes de dejarlo en bucle, haz `npm run una-vez` para comprobar que la provincia,
   el trámite y el país se encuentran bien. Si algo falla, mira la captura en `capturas/`.
 

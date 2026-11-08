@@ -120,6 +120,31 @@ async function guardarEvidencia(page, nombre) {
   return `${base}.png`;
 }
 
+const SELECTORES_CAPTCHA = [
+  'iframe[src*="recaptcha"]', '.g-recaptcha', 'iframe[src*="hcaptcha"]', '.h-captcha',
+  'img[id*="captcha" i]', 'img[src*="captcha" i]', 'input[id*="captcha" i]', 'input[name*="captcha" i]',
+];
+
+/** ¿Hay un captcha visible en la página? (el programa NO lo resuelve: lo hace la persona) */
+async function hayCaptcha(page) {
+  for (const s of SELECTORES_CAPTCHA) {
+    const l = page.locator(s);
+    if ((await l.count()) > 0 && (await l.first().isVisible().catch(() => true))) return true;
+  }
+  return false;
+}
+
+/** Espera (máx. `minutos`) a que la persona actúe en el navegador y se cumpla `listo()`. */
+async function esperarPersona(page, listo, minutos = 10) {
+  const limite = Date.now() + minutos * 60_000;
+  while (Date.now() < limite) {
+    if (page.isClosed()) throw new Error('Se cerró la ventana del navegador');
+    if (await listo()) return true;
+    await page.waitForTimeout(2000);
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------- pasos
 
 async function pasoProvincia(page, cfg) {
@@ -161,7 +186,7 @@ async function pasoEntrar(page) {
   if (await existe(page, '#btnEntrar')) await clicYEsperar(page, '#btnEntrar');
 }
 
-async function pasoDatosPersonales(page, cfg) {
+async function pasoDatosPersonales(page, cfg, opciones) {
   await verificarBloqueo(page);
   await page.waitForSelector('#txtIdCitado', { timeout: TIMEOUT_PASO });
 
@@ -182,6 +207,13 @@ async function pasoDatosPersonales(page, cfg) {
   if (await existe(page, '#txtFecha')) {
     if (!cfg.fechaCaducidad) throw new Error('La sede pide fecha de caducidad de la tarjeta: rellena "fechaCaducidad"');
     await page.fill('#txtFecha', cfg.fechaCaducidad);
+  }
+  if (await hayCaptcha(page)) {
+    await opciones.resolverCaptcha({ momento: 'datos' });
+    const ok = await esperarPersona(page, async () => !(await existe(page, '#txtIdCitado')));
+    if (!ok) throw new Error('Nadie resolvió el captcha de la pantalla de datos a tiempo');
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    return;
   }
   await clicYEsperar(page, '#btnEnviar');
 }
@@ -256,6 +288,7 @@ async function pasoConfirmar(page, cfg, opciones) {
   if (await existe(page, '#enviarCorreo')) await page.check('#enviarCorreo');
 
   if (await existe(page, '#txtCodigoVerificacion')) {
+    // Confirmación por SMS
     const codigo = await opciones.pedirCodigoSMS();
     if (codigo) {
       await page.fill('#txtCodigoVerificacion', codigo);
@@ -263,22 +296,32 @@ async function pasoConfirmar(page, cfg, opciones) {
     } else {
       log('Esperando a que completes la confirmación en el navegador (máx. 10 min)...');
     }
+  } else if (await hayCaptcha(page)) {
+    // Confirmación por captcha: lo resuelve la persona y pulsa "Confirmar"
+    await opciones.resolverCaptcha({ momento: 'confirmar' });
+    log('Esperando a que resuelvas el captcha y pulses "Confirmar" en el navegador (máx. 10 min)...');
   } else if (await existe(page, '#btnConfirmar')) {
     await clicYEsperar(page, '#btnConfirmar');
   }
 
   // Esperar el justificante (lo confirma el bot o la persona en el navegador)
-  const limite = Date.now() + 10 * 60_000;
-  while (Date.now() < limite) {
+  let textoFinal = '';
+  let avisado = '';
+  const ok = await esperarPersona(page, async () => {
     const t = await textoPagina(page);
     if (t.includes('CITA CONFIRMADA') || t.includes('JUSTIFICANTE DE CITA') || t.includes('NUMERO DE JUSTIFICANTE')) {
-      return t;
+      textoFinal = t;
+      return true;
     }
-    if (t.includes('CODIGO INCORRECTO') || t.includes('CODIGO DE VERIFICACION NO ES CORRECTO')) {
-      log('El código SMS no es correcto; introdúcelo de nuevo en el navegador.');
+    const error = ['CODIGO INCORRECTO', 'CODIGO DE VERIFICACION NO ES CORRECTO', 'CAPTCHA INCORRECTO', 'CARACTERES NO COINCIDEN']
+      .find((m) => t.includes(m));
+    if (error && error !== avisado) {
+      avisado = error;
+      log('La sede dice que el código/captcha no es correcto: vuelve a intentarlo en el navegador.');
     }
-    await page.waitForTimeout(3000);
-  }
+    return false;
+  });
+  if (ok) return textoFinal;
   throw new Error('No se completó la confirmación a tiempo; la cita retenida caducará');
 }
 
@@ -286,7 +329,8 @@ async function pasoConfirmar(page, cfg, opciones) {
  * Ejecuta un intento completo en una sesión nueva.
  * @param {import('playwright').Browser} browser
  * @param {object} cfg
- * @param {{pedirCodigoSMS: () => Promise<string>, alEncontrar: (info:object) => Promise<void>}} opciones
+ * @param {{pedirCodigoSMS: () => Promise<string>, resolverCaptcha: (info:{momento:string}) => Promise<void>,
+ *          alEncontrar: (info:object) => Promise<void>}} opciones
  * @returns {Promise<{estado: string, detalle?: string, captura?: string, page?: any, context?: any}>}
  */
 async function intentar(browser, cfg, opciones) {
@@ -301,7 +345,7 @@ async function intentar(browser, cfg, opciones) {
     await pasoProvincia(page, cfg);
     await pasoTramite(page, cfg);
     await pasoEntrar(page);
-    await pasoDatosPersonales(page, cfg);
+    await pasoDatosPersonales(page, cfg, opciones);
     await pasoSolicitar(page);
 
     let t = await verificarBloqueo(page);

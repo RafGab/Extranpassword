@@ -3,7 +3,7 @@
 /**
  * Servidor que imita las pantallas (y los id de los campos) de la sede ICP
  * para probar el flujo sin tocar la web real.
- * escenario: 'sin-citas' | 'con-citas' | 'bloqueo' | 'fuera-rango'
+ * escenario: 'sin-citas' | 'con-citas' | 'bloqueo' | 'fuera-rango' | 'captcha'
  */
 const http = require('http');
 
@@ -88,6 +88,15 @@ function crearSede(escenario) {
             'btnSiguiente', 'Siguiente')));
         }
         case '/icpplus/acGrabarCita':
+          if (escenario === 'captcha') {
+            return res.end(pagina(form('/icpplus/acConfirmar',
+              `<p>Cita retenida. Escriba los caracteres de la imagen.</p>
+               <input type="checkbox" id="chkTotal" name="chkTotal">
+               <input type="checkbox" id="enviarCorreo" name="enviarCorreo">
+               <img id="imgCaptcha" alt="captcha" width="120" height="40" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+               <input id="captcha" name="captcha">`,
+              'btnConfirmar', 'Confirmar')));
+          }
           return res.end(pagina(form('/icpplus/acConfirmar',
             `<p>Cita retenida. Introduzca el código recibido por SMS.</p>
              <input type="checkbox" id="chkTotal" name="chkTotal">
@@ -95,7 +104,9 @@ function crearSede(escenario) {
              <input id="txtCodigoVerificacion" name="txtCodigoVerificacion">`,
             'btnConfirmar', 'Confirmar')));
         case '/icpplus/acConfirmar':
-          if (params.txtCodigoVerificacion !== '123456') {
+          if (escenario === 'captcha') {
+            if (params.captcha !== 'K7P2') return res.end(pagina('<p>Captcha incorrecto</p>'));
+          } else if (params.txtCodigoVerificacion !== '123456') {
             return res.end(pagina('<p>El código de verificación no es correcto</p>'));
           }
           return res.end(pagina('<h1>CITA CONFIRMADA Y GRABADA</h1><p>Número de justificante de cita: ABC123XYZ</p>'));

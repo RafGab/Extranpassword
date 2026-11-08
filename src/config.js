@@ -85,6 +85,9 @@ function validar(c) {
   } else if (c.intervaloMinutos[0] < 2) {
     errores.push('"intervaloMinutos" mínimo es 2 minutos: consultas más frecuentes provocan bloqueos de la sede');
   }
+  if (!c.navegador.visible) {
+    errores.push('"navegador.visible" debe ser true: la cita se confirma con un captcha que tienes que resolver tú en la ventana');
+  }
   if (!c.personas.length) errores.push('No hay ninguna persona en "personas"');
   const vistos = new Set();
   c.personas.forEach((p, i) => {
